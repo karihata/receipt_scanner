@@ -142,6 +142,74 @@
             cursor: default;
         }
 
+        button:active:not(:disabled) {
+            transform: scale(.97);
+            filter: brightness(.9);
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(0, 0, 0, .5);
+            z-index: 200;
+        }
+
+        .dialog {
+            width: 100%;
+            max-width: 360px;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .dialog p {
+            margin: 0 0 16px;
+        }
+
+        #toast {
+            position: fixed;
+            left: 50%;
+            bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+            transform: translate(-50%, 12px);
+            max-width: min(92vw, 420px);
+            padding: 12px 18px;
+            border-radius: 6px;
+            background: var(--ink);
+            color: var(--bg);
+            font-size: .92rem;
+            line-height: 1.5;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, .28);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .18s, transform .18s;
+            z-index: 100;
+        }
+
+        #toast.show {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        #toast.error {
+            background: var(--warn);
+            color: #fff;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #toast {
+                transition: none;
+            }
+
+            button:active:not(:disabled) {
+                transform: none;
+            }
+        }
+
         .inline {
             display: flex;
             gap: 8px;
@@ -249,6 +317,16 @@
             line-height: 1.5;
         }
 
+        .form-error {
+            color: var(--warn);
+            font-size: .9rem;
+            margin: 0 0 12px;
+        }
+
+        input[aria-invalid="true"] {
+            border-color: var(--warn);
+        }
+
         .note {
             font-size: .82rem;
             color: var(--sub);
@@ -304,6 +382,7 @@
                 <label for="f-memo">メモ(任意)</label>
                 <input id="f-memo" type="text" autocomplete="off">
             </div>
+            <p id="form-error" class="form-error" role="alert" hidden></p>
             <div class="actions">
                 <button id="btn-save" type="button">表に追加して保存</button>
             </div>
@@ -397,6 +476,18 @@ function doPost(e) {
         </section>
     </main>
 
+    <div id="confirm" class="overlay" hidden>
+        <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-msg">
+            <p id="confirm-msg"></p>
+            <div class="actions">
+                <button id="confirm-cancel" type="button" class="ghost">キャンセル</button>
+                <button id="confirm-ok" type="button">削除する</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
     <script>
         (function () {
             'use strict';
@@ -423,10 +514,49 @@ function doPost(e) {
             );
 
             /* ---------- status ---------- */
+            var toastTimer = null;
+            function showToast(msg, isError) {
+                var el = $('toast');
+                el.textContent = msg;
+                el.className = 'show' + (isError ? ' error' : '');
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(function () { el.className = ''; }, isError ? 4500 : 2500);
+            }
+            // 画面内のステータス表示とフラッシュメッセージの両方を出す
             function setStatus(msg, isError) {
                 var el = $('status');
                 el.textContent = msg || '';
                 el.className = isError ? 'error' : '';
+                if (msg) showToast(msg, isError);
+            }
+            // 処理中の経過表示(フラッシュは出さない)
+            function setProgress(msg) {
+                var el = $('status');
+                el.textContent = msg || '';
+                el.className = '';
+            }
+
+            /* ---------- confirm dialog (window.confirmの代わり) ---------- */
+            function askConfirm(msg) {
+                return new Promise(function (resolve) {
+                    var box = $('confirm');
+                    function done(v) {
+                        box.hidden = true;
+                        document.removeEventListener('keydown', onKey);
+                        box.onclick = null;
+                        $('confirm-ok').onclick = null;
+                        $('confirm-cancel').onclick = null;
+                        resolve(v);
+                    }
+                    function onKey(e) { if (e.key === 'Escape') done(false); }
+                    $('confirm-msg').textContent = msg;
+                    $('confirm-ok').onclick = function () { done(true); };
+                    $('confirm-cancel').onclick = function () { done(false); };
+                    box.onclick = function (e) { if (e.target === box) done(false); };
+                    document.addEventListener('keydown', onKey);
+                    box.hidden = false;
+                    $('confirm-cancel').focus();
+                });
             }
 
             /* ---------- settings ---------- */
@@ -530,11 +660,11 @@ function doPost(e) {
 
             function runOcr(canvas) {
                 return loadTesseract().then(function () {
-                    setStatus('文字を読み取っています(初回は言語データの取得に時間がかかります)…');
+                    setProgress('文字を読み取っています(初回は言語データの取得に時間がかかります)…');
                     return Tesseract.createWorker('jpn+eng', 1, {
                         logger: function (m) {
                             if (m.status === 'recognizing text') {
-                                setStatus('文字を読み取っています… ' + Math.round(m.progress * 100) + '%');
+                                setProgress('文字を読み取っています… ' + Math.round(m.progress * 100) + '%');
                             }
                         }
                     });
@@ -620,7 +750,7 @@ function doPost(e) {
                 if (!settings.gkey) {
                     return Promise.reject(new Error('設定にGemini APIキーを入力してください。'));
                 }
-                setStatus('AIで読み取っています…');
+                setProgress('AIで読み取っています…');
                 var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                 var b64 = dataUrl.split(',')[1];
                 var prompt =
@@ -660,17 +790,36 @@ function doPost(e) {
                 return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
             }
 
+            // 入力エラーは「2. 内容を確認して保存」の枠内に表示する
+            function showFormError(msg, inputId) {
+                var el = $('form-error');
+                el.textContent = msg;
+                el.hidden = false;
+                $(inputId).setAttribute('aria-invalid', 'true');
+                $(inputId).focus();
+            }
+            function clearFormError() {
+                $('form-error').hidden = true;
+                $('form-error').textContent = '';
+                ['f-store', 'f-amount'].forEach(function (id) { $(id).removeAttribute('aria-invalid'); });
+            }
+            $('f-store').addEventListener('input', clearFormError);
+            $('f-amount').addEventListener('input', clearFormError);
+
             function applyResult(r) {
+                clearFormError();
                 $('f-date').value = r.date || today();
                 $('f-store').value = r.store || '';
                 $('f-amount').value = r.amount === '' ? '' : r.amount;
             }
 
             $('btn-camera').addEventListener('click', function () {
+                showToast('カメラを起動します');
                 $('file').setAttribute('capture', 'environment');
                 $('file').click();
             });
             $('btn-gallery').addEventListener('click', function () {
+                showToast('写真を選択してください');
                 $('file').removeAttribute('capture');
                 $('file').click();
             });
@@ -679,7 +828,7 @@ function doPost(e) {
                 var file = this.files && this.files[0];
                 this.value = '';
                 if (!file) return;
-                setStatus('画像を処理しています…');
+                setProgress('画像を処理しています…');
                 loadImage(file).then(function (img) {
                     var preview = $('preview');
                     var pc = toCanvas(img, 800);
@@ -730,10 +879,15 @@ function doPost(e) {
                     b.type = 'button'; b.className = 'ghost'; b.textContent = '削除';
                     b.setAttribute('aria-label', r.store + 'の記録を削除');
                     b.addEventListener('click', function () {
-                        if (!confirm('この記録を削除しますか?(スプレッドシート側の行は消えません)')) return;
-                        rows.splice(i, 1);
-                        save(LS_ROWS, rows);
-                        render();
+                        askConfirm('この記録を削除しますか?(スプレッドシート側の行は消えません)').then(function (ok) {
+                            if (!ok) return;
+                            var idx = rows.indexOf(r);
+                            if (idx < 0) return;
+                            rows.splice(idx, 1);
+                            save(LS_ROWS, rows);
+                            render();
+                            showToast('記録を削除しました');
+                        });
                     });
                     c4.appendChild(b);
                     [c1, c2, c3, c4].forEach(function (c) { tr.appendChild(c); });
@@ -759,8 +913,8 @@ function doPost(e) {
             $('btn-save').addEventListener('click', function () {
                 var amount = parseInt($('f-amount').value, 10);
                 var store = $('f-store').value.trim();
-                if (!store) { setStatus('店名を入力してください。', true); $('f-store').focus(); return; }
-                if (isNaN(amount) || amount < 0) { setStatus('金額を入力してください。', true); $('f-amount').focus(); return; }
+                if (!store) { showFormError('店名を入力してください。', 'f-store'); return; }
+                if (isNaN(amount) || amount < 0) { showFormError('金額を入力してください。', 'f-amount'); return; }
                 var row = {
                     date: $('f-date').value || today(),
                     store: store,
@@ -802,13 +956,17 @@ function doPost(e) {
                 a.click();
                 a.remove();
                 setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+                showToast('CSVを保存しました(' + rows.length + '件)');
             });
             $('btn-clear').addEventListener('click', function () {
-                if (!rows.length) return;
-                if (!confirm('この端末の一覧をすべて空にしますか?(スプレッドシート側の行は消えません)')) return;
-                rows = [];
-                save(LS_ROWS, rows);
-                render();
+                if (!rows.length) { showToast('一覧はすでに空です'); return; }
+                askConfirm('この端末の一覧をすべて空にしますか?(スプレッドシート側の行は消えません)').then(function (ok) {
+                    if (!ok) return;
+                    rows = [];
+                    save(LS_ROWS, rows);
+                    render();
+                    showToast('一覧を空にしました');
+                });
             });
 
             /* ---------- init ---------- */
