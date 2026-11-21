@@ -97,12 +97,28 @@
 
         .field {
             margin-bottom: 12px;
+            min-width: 0;
         }
 
         .row {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 12px;
+        }
+
+        /* iOS Safariの日付入力が枠からはみ出るのを防ぐ */
+        input[type="date"] {
+            -webkit-appearance: none;
+            appearance: none;
+            display: block;
+            min-width: 0;
+            max-width: 100%;
+            text-align: left;
+        }
+
+        input[type="date"]::-webkit-date-and-time-value {
+            text-align: left;
+            min-height: 1.5em;
         }
 
         button {
