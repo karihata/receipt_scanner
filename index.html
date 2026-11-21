@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>レシート記録</title>
+    <style>
+        :root {
+            --bg: #eef1f4;
+            --paper: #ffffff;
+            --ink: #1b2430;
+            --sub: #5b6675;
+            --line: #d3d9e0;
+            --accent: #0f5c63;
+            --accent-ink: #ffffff;
+            --warn: #a4321f;
+            color-scheme: light;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #12171d;
+                --paper: #1b232c;
+                --ink: #e6ebf0;
+                --sub: #97a3b1;
+                --line: #2e3945;
+                --accent: #4fb3bd;
+                --accent-ink: #082126;
+                --warn: #ff9b86;
+                color-scheme: dark;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+            line-height: 1.6;
+        }
+
+        main {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 16px 16px 64px;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            margin: 8px 0 16px;
+        }
+
+        h2 {
+            font-size: 1rem;
+            margin: 0 0 12px;
+        }
+
+        section {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: .85rem;
+            color: var(--sub);
+            margin-bottom: 4px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            font: inherit;
+            color: var(--ink);
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 10px;
+            min-height: 44px;
+        }
+
+        input:focus-visible,
+        select:focus-visible,
+        button:focus-visible,
+        summary:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .field {
+            margin-bottom: 12px;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        button {
+            font: inherit;
+            min-height: 44px;
+            padding: 0 16px;
+            border-radius: 4px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: var(--accent-ink);
+            cursor: pointer;
+        }
+
+        button.ghost {
+            background: transparent;
+            color: var(--accent);
+        }
+
+        button:disabled {
+            opacity: .5;
+            cursor: default;
+        }
+
+        .inline {
+            display: flex;
+            gap: 8px;
+        }
+
+        .inline input {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .inline button {
+            flex: 0 0 auto;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .actions button {
+            flex: 1 1 auto;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 260px;
+            display: none;
+            margin: 12px 0;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+        }
+
+        #status {
+            min-height: 1.5em;
+            font-size: .9rem;
+            color: var(--sub);
+            margin: 8px 0 0;
+        }
+
+        #status.error {
+            color: var(--warn);
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .9rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px 6px;
+            border-bottom: 1px solid var(--line);
+            white-space: nowrap;
+        }
+
+        td.store {
+            white-space: normal;
+            min-width: 8em;
+        }
+
+        td.num,
+        th.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        tfoot td {
+            font-weight: 700;
+            border-bottom: 0;
+        }
+
+        td button {
+            min-height: 32px;
+            padding: 0 10px;
+            font-size: .8rem;
+        }
+
+        details summary {
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        details[open] summary {
+            margin-bottom: 12px;
+        }
+
+        pre {
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 12px;
+            overflow-x: auto;
+            font-size: .78rem;
+            line-height: 1.5;
+        }
+
+        .note {
+            font-size: .82rem;
+            color: var(--sub);
+            margin: 8px 0 0;
+        }
+
+        .empty {
+            color: var(--sub);
+            text-align: center;
+            padding: 16px 0;
+        }
+
+        @media (max-width: 420px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>レシート記録</h1>
+
+        <section aria-labelledby="scan-h">
+            <h2 id="scan-h">1. レシートを撮影</h2>
+            <input id="file" type="file" accept="image/*" capture="environment" hidden>
+            <div class="actions">
+                <button id="btn-camera" type="button">カメラで撮影</button>
+                <button id="btn-gallery" type="button" class="ghost">写真を選ぶ</button>
+            </div>
+            <img id="preview" alt="撮影したレシート">
+            <p id="status" role="status"></p>
+        </section>
+
+        <section aria-labelledby="edit-h">
+            <h2 id="edit-h">2. 内容を確認して保存</h2>
+            <div class="row">
+                <div class="field">
+                    <label for="f-date">日付</label>
+                    <input id="f-date" type="date">
+                </div>
+                <div class="field">
+                    <label for="f-amount">支払金額(円)</label>
+                    <input id="f-amount" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+            </div>
+            <div class="field">
+                <label for="f-store">店名</label>
+                <input id="f-store" type="text" autocomplete="off">
+            </div>
+            <div class="field">
+                <label for="f-memo">メモ(任意)</label>
+                <input id="f-memo" type="text" autocomplete="off">
+            </div>
+            <div class="actions">
+                <button id="btn-save" type="button">表に追加して保存</button>
+            </div>
+        </section>
+
+        <section aria-labelledby="list-h">
+            <h2 id="list-h">記録一覧</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>日付</th>
+                            <th>店名</th>
+                            <th class="num">金額</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2">合計</td>
+                            <td class="num" id="total">0</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="actions" style="margin-top:12px">
+                <button id="btn-csv" type="button" class="ghost">CSVで保存</button>
+                <button id="btn-clear" type="button" class="ghost">一覧を空にする</button>
+            </div>
+            <p class="note">一覧はこの端末のブラウザ内に保存されます。スプレッドシート連携を設定すると、保存時に同じ内容がシートにも追記されます。</p>
+        </section>
+
+        <section>
+            <details id="settings">
+                <summary>設定</summary>
+
+                <div class="field">
+                    <label for="s-engine">読み取り方法</label>
+                    <select id="s-engine">
+                        <option value="ocr">端末内OCR(無料・精度は普通)</option>
+                        <option value="gemini">Gemini API(高精度・APIキーが必要)</option>
+                    </select>
+                </div>
+                <div id="gemini-fields" hidden>
+                    <div class="field">
+                        <label for="s-gkey">Gemini APIキー</label>
+                        <input id="s-gkey" type="password" autocomplete="off" placeholder="AIza...">
+                    </div>
+                    <div class="field">
+                        <label for="s-gmodel">Geminiモデル名</label>
+                        <input id="s-gmodel" type="text" placeholder="gemini-2.5-flash">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="s-gas">スプレッドシート連携URL(Apps Script)</label>
+                    <input id="s-gas" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+                </div>
+                <div class="field">
+                    <label for="s-token">合言葉(Apps Script側と同じ文字列)</label>
+                    <div class="inline">
+                        <input id="s-token" type="password" autocomplete="off">
+                        <button id="btn-gen" type="button" class="ghost">自動生成</button>
+                    </div>
+                </div>
+                <button id="btn-settings" type="button">設定を保存</button>
+                <p class="note">APIキーや連携URLはこの端末のブラウザにだけ保存され、公開ページのソースには含まれません。APIキーはGoogle AI
+                    Studio側でHTTPリファラー制限(自分のGitHub PagesのURLのみ許可)をかけてください。</p>
+
+                <h2 style="margin-top:20px">Apps Scriptのコード</h2>
+                <p class="note" style="margin-top:0">スプレッドシートを開き、「拡張機能 → Apps
+                    Script」に貼り付けます。合言葉は自分で決めた文字列に置き換えてください。「デプロイ → 新しいデプロイ →
+                    ウェブアプリ」で、実行ユーザーは自分、アクセスできるユーザーは「全員」にして、発行されたURLを上の欄に入れます。</p>
+                <pre id="gas-code">const TOKEN = '好きな合言葉';
+
+function doPost(e) {
+  const d = JSON.parse(e.postData.contents);
+  if (d.token !== TOKEN) {
+    return ContentService.createTextOutput('forbidden');
+  }
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(['日付', '店名', '金額', 'メモ', '記録日時']);
+  }
+  sh.appendRow([d.date, d.store, d.amount, d.memo, new Date()]);
+  return ContentService.createTextOutput('ok');
+}</pre>
+                <button id="btn-copy" type="button" class="ghost">コードをコピー</button>
+            </details>
+        </section>
+    </main>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var $ = function (id) { return document.getElementById(id); };
+            var LS_ROWS = 'receipts.rows.v1';
+            var LS_SET = 'receipts.settings.v1';
+
+            /* ---------- storage ---------- */
+            function load(key, fallback) {
+                try {
+                    var v = localStorage.getItem(key);
+                    return v ? JSON.parse(v) : fallback;
+                } catch (e) { return fallback; }
+            }
+            function save(key, val) {
+                try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { }
+            }
+
+            var rows = load(LS_ROWS, []);
+            var settings = Object.assign(
+                { engine: 'ocr', gkey: '', gmodel: 'gemini-2.5-flash', gas: '', token: '' },
+                load(LS_SET, {})
+            );
+
+            /* ---------- status ---------- */
+            function setStatus(msg, isError) {
+                var el = $('status');
+                el.textContent = msg || '';
+                el.className = isError ? 'error' : '';
+            }
+
+            /* ---------- settings ---------- */
+            function fillSettings() {
+                $('s-engine').value = settings.engine;
+                $('s-gkey').value = settings.gkey;
+                $('s-gmodel').value = settings.gmodel;
+                $('s-gas').value = settings.gas;
+                $('s-token').value = settings.token;
+                toggleGemini();
+                syncCode();
+            }
+
+            // 読み取り方法がGeminiのときだけGemini設定を表示
+            function toggleGemini() {
+                $('gemini-fields').hidden = $('s-engine').value !== 'gemini';
+            }
+            $('s-engine').addEventListener('change', toggleGemini);
+
+            // 表示中のApps Scriptコードの合言葉を、入力中の値に置き換える
+            function syncCode() {
+                var t = $('s-token').value || '好きな合言葉';
+                $('gas-code').textContent = $('gas-code').textContent.replace(
+                    /const TOKEN = '.*';/,
+                    function () { return "const TOKEN = '" + t.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "';"; }
+                );
+            }
+            $('s-token').addEventListener('input', syncCode);
+
+            // 合言葉の自動生成(英数字20文字)
+            $('btn-gen').addEventListener('click', function () {
+                var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+                var buf = new Uint32Array(20);
+                crypto.getRandomValues(buf);
+                var t = '';
+                for (var i = 0; i < buf.length; i++) t += chars[buf[i] % chars.length];
+                $('s-token').type = 'text';
+                $('s-token').value = t;
+                settings.token = t;
+                save(LS_SET, settings);
+                syncCode();
+                setStatus('合言葉を生成して保存しました。下のApps Scriptコードに反映済みです。コピーして貼り付けてください。');
+            });
+            $('btn-settings').addEventListener('click', function () {
+                settings.engine = $('s-engine').value;
+                settings.gkey = $('s-gkey').value.trim();
+                settings.gmodel = $('s-gmodel').value.trim() || 'gemini-2.5-flash';
+                settings.gas = $('s-gas').value.trim();
+                settings.token = $('s-token').value;
+                save(LS_SET, settings);
+                setStatus('設定を保存しました。');
+            });
+            $('btn-copy').addEventListener('click', function () {
+                var text = $('gas-code').textContent;
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(
+                        function () { setStatus('コードをコピーしました。'); },
+                        function () { setStatus('コピーできませんでした。手動で選択してください。', true); }
+                    );
+                }
+            });
+
+            /* ---------- image handling ---------- */
+            var currentCanvas = null;
+
+            function loadImage(file) {
+                return new Promise(function (resolve, reject) {
+                    var url = URL.createObjectURL(file);
+                    var img = new Image();
+                    img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+                    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('画像を読み込めませんでした。')); };
+                    img.src = url;
+                });
+            }
+
+            function toCanvas(img, maxSide) {
+                var w = img.naturalWidth, h = img.naturalHeight;
+                var scale = Math.min(1, maxSide / Math.max(w, h));
+                var c = document.createElement('canvas');
+                c.width = Math.round(w * scale);
+                c.height = Math.round(h * scale);
+                c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                return c;
+            }
+
+            /* ---------- OCR (Tesseract.js, loaded on demand) ---------- */
+            var tessPromise = null;
+            function loadTesseract() {
+                if (window.Tesseract) return Promise.resolve();
+                if (!tessPromise) {
+                    tessPromise = new Promise(function (resolve, reject) {
+                        var s = document.createElement('script');
+                        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+                        s.onload = resolve;
+                        s.onerror = function () { tessPromise = null; reject(new Error('OCRライブラリを読み込めませんでした。通信環境を確認してください。')); };
+                        document.head.appendChild(s);
+                    });
+                }
+                return tessPromise;
+            }
+
+            function runOcr(canvas) {
+                return loadTesseract().then(function () {
+                    setStatus('文字を読み取っています(初回は言語データの取得に時間がかかります)…');
+                    return Tesseract.createWorker('jpn+eng', 1, {
+                        logger: function (m) {
+                            if (m.status === 'recognizing text') {
+                                setStatus('文字を読み取っています… ' + Math.round(m.progress * 100) + '%');
+                            }
+                        }
+                    });
+                }).then(function (worker) {
+                    return worker.recognize(canvas).then(function (res) {
+                        return worker.terminate().then(function () { return res.data.text; });
+                    });
+                });
+            }
+
+            /* ---------- parsing OCR text ---------- */
+            function normalizeText(t) {
+                // 全角英数を半角へ、日本語文字間の余計な空白を除去
+                t = t.replace(/[０-９Ａ-Ｚａ-ｚ]/g, function (c) {
+                    return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+                });
+                t = t.replace(/([^\x00-\x7F]) (?=[^\x00-\x7F])/g, '$1');
+                return t;
+            }
+
+            function parseDate(text) {
+                var m = text.match(/(20\d{2})\s*[年\/\-.]\s*(\d{1,2})\s*[月\/\-.]\s*(\d{1,2})/);
+                if (!m) return '';
+                var mo = ('0' + m[2]).slice(-2), d = ('0' + m[3]).slice(-2);
+                if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return '';
+                return m[1] + '-' + mo + '-' + d;
+            }
+
+            function parseStore(lines) {
+                var skip = /(領収|レシート|receipt|TEL|電話|〒|https?:|www\.|\d{2,4}-\d{2,4}-\d{3,4}|^\W+$|^[\d\s\W]+$)/i;
+                for (var i = 0; i < Math.min(lines.length, 8); i++) {
+                    var l = lines[i].trim();
+                    if (l.length >= 2 && !skip.test(l)) return l;
+                }
+                return '';
+            }
+
+            function numbersIn(line) {
+                var out = [];
+                var re = /[¥￥\\Y]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{1,7})/g;
+                var m;
+                while ((m = re.exec(line)) !== null) {
+                    var n = parseInt(m[1].replace(/[,.]/g, ''), 10);
+                    if (!isNaN(n)) out.push(n);
+                }
+                return out;
+            }
+
+            function parseAmount(lines) {
+                var exclude = /(小計|預|釣|お釣|ポイント|割引|値引|対象|消費税|内税|外税|税額)/;
+                var priority = [/(総合計|お買上げ?計|お買い上げ?計|ご請求|請求額)/, /合計/, /(お買上|お買い上げ)/, /税込/];
+                for (var p = 0; p < priority.length; p++) {
+                    for (var i = 0; i < lines.length; i++) {
+                        var l = lines[i];
+                        if (!priority[p].test(l) || exclude.test(l.replace(priority[p], ''))) continue;
+                        var nums = numbersIn(l);
+                        // 数字が次の行に分かれている場合
+                        if (!nums.length && lines[i + 1]) nums = numbersIn(lines[i + 1]);
+                        if (nums.length) return nums[nums.length - 1];
+                    }
+                }
+                // フォールバック: ¥付きの最大値
+                var best = 0;
+                lines.forEach(function (l) {
+                    if (exclude.test(l)) return;
+                    var re = /[¥￥\\]\s*(\d{1,3}(?:,\d{3})+|\d+)/g, m;
+                    while ((m = re.exec(l)) !== null) {
+                        var n = parseInt(m[1].replace(/,/g, ''), 10);
+                        if (n > best) best = n;
+                    }
+                });
+                return best || '';
+            }
+
+            function parseReceipt(raw) {
+                var text = normalizeText(raw);
+                var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+                return { date: parseDate(text), store: parseStore(lines), amount: parseAmount(lines) };
+            }
+
+            /* ---------- Gemini ---------- */
+            function runGemini(canvas) {
+                if (!settings.gkey) {
+                    return Promise.reject(new Error('設定にGemini APIキーを入力してください。'));
+                }
+                setStatus('AIで読み取っています…');
+                var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                var b64 = dataUrl.split(',')[1];
+                var prompt =
+                    'これは日本のレシートの写真です。次のJSONだけを返してください。' +
+                    '{"store":"店名(支店名を含む)","amount":支払合計の整数(税込・円)、"date":"YYYY-MM-DD"}。' +
+                    '合計は「小計」「お預り」「お釣り」ではなく、実際に支払った税込合計です。読み取れない項目は空文字にしてください。';
+                var url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+                    encodeURIComponent(settings.gmodel) + ':generateContent?key=' + encodeURIComponent(settings.gkey);
+                return fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
+                        generationConfig: { responseMimeType: 'application/json', temperature: 0 }
+                    })
+                }).then(function (r) {
+                    return r.json().then(function (j) {
+                        if (!r.ok) throw new Error((j.error && j.error.message) || ('APIエラー(' + r.status + ')'));
+                        return j;
+                    });
+                }).then(function (j) {
+                    var t = j.candidates && j.candidates[0] && j.candidates[0].content.parts[0].text;
+                    if (!t) throw new Error('AIから結果が返りませんでした。');
+                    var o = JSON.parse(t.replace(/```json|```/g, '').trim());
+                    var amt = parseInt(String(o.amount).replace(/[^\d]/g, ''), 10);
+                    return {
+                        store: o.store || '',
+                        amount: isNaN(amt) ? '' : amt,
+                        date: /^\d{4}-\d{2}-\d{2}$/.test(o.date || '') ? o.date : ''
+                    };
+                });
+            }
+
+            /* ---------- scan flow ---------- */
+            function today() {
+                var d = new Date();
+                return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+            }
+
+            function applyResult(r) {
+                $('f-date').value = r.date || today();
+                $('f-store').value = r.store || '';
+                $('f-amount').value = r.amount === '' ? '' : r.amount;
+            }
+
+            $('btn-camera').addEventListener('click', function () {
+                $('file').setAttribute('capture', 'environment');
+                $('file').click();
+            });
+            $('btn-gallery').addEventListener('click', function () {
+                $('file').removeAttribute('capture');
+                $('file').click();
+            });
+
+            $('file').addEventListener('change', function () {
+                var file = this.files && this.files[0];
+                this.value = '';
+                if (!file) return;
+                setStatus('画像を処理しています…');
+                loadImage(file).then(function (img) {
+                    var preview = $('preview');
+                    var pc = toCanvas(img, 800);
+                    preview.src = pc.toDataURL('image/jpeg', 0.8);
+                    preview.style.display = 'block';
+                    currentCanvas = toCanvas(img, settings.engine === 'gemini' ? 1600 : 2000);
+                    return settings.engine === 'gemini'
+                        ? runGemini(currentCanvas)
+                        : runOcr(currentCanvas).then(parseReceipt);
+                }).then(function (r) {
+                    applyResult(r);
+                    var missing = [];
+                    if (!r.store) missing.push('店名');
+                    if (r.amount === '') missing.push('金額');
+                    setStatus(missing.length
+                        ? missing.join('と') + 'を読み取れませんでした。手で入力してください。'
+                        : '読み取りました。内容を確認してください。', missing.length > 0);
+                }).catch(function (e) {
+                    applyResult({});
+                    setStatus(e.message || '読み取りに失敗しました。', true);
+                });
+            });
+
+            /* ---------- table ---------- */
+            function yen(n) { return Number(n).toLocaleString('ja-JP'); }
+
+            function render() {
+                var tbody = $('rows');
+                tbody.textContent = '';
+                var total = 0;
+                if (!rows.length) {
+                    var tr0 = document.createElement('tr');
+                    var td0 = document.createElement('td');
+                    td0.colSpan = 4;
+                    td0.className = 'empty';
+                    td0.textContent = 'まだ記録がありません。レシートを撮影してください。';
+                    tr0.appendChild(td0);
+                    tbody.appendChild(tr0);
+                }
+                rows.forEach(function (r, i) {
+                    total += Number(r.amount) || 0;
+                    var tr = document.createElement('tr');
+                    var c1 = document.createElement('td'); c1.textContent = r.date;
+                    var c2 = document.createElement('td'); c2.className = 'store'; c2.textContent = r.store + (r.memo ? '(' + r.memo + ')' : '');
+                    var c3 = document.createElement('td'); c3.className = 'num'; c3.textContent = yen(r.amount);
+                    var c4 = document.createElement('td');
+                    var b = document.createElement('button');
+                    b.type = 'button'; b.className = 'ghost'; b.textContent = '削除';
+                    b.setAttribute('aria-label', r.store + 'の記録を削除');
+                    b.addEventListener('click', function () {
+                        if (!confirm('この記録を削除しますか?(スプレッドシート側の行は消えません)')) return;
+                        rows.splice(i, 1);
+                        save(LS_ROWS, rows);
+                        render();
+                    });
+                    c4.appendChild(b);
+                    [c1, c2, c3, c4].forEach(function (c) { tr.appendChild(c); });
+                    tbody.appendChild(tr);
+                });
+                $('total').textContent = yen(total);
+            }
+
+            /* ---------- save ---------- */
+            function sendToSheet(row) {
+                if (!settings.gas) return Promise.resolve(false);
+                return fetch(settings.gas, {
+                    method: 'POST',
+                    mode: 'no-cors', // Apps Scriptはpreflightを受け付けないため、応答は読めない
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        token: settings.token,
+                        date: row.date, store: row.store, amount: row.amount, memo: row.memo
+                    })
+                }).then(function () { return true; });
+            }
+
+            $('btn-save').addEventListener('click', function () {
+                var amount = parseInt($('f-amount').value, 10);
+                var store = $('f-store').value.trim();
+                if (!store) { setStatus('店名を入力してください。', true); $('f-store').focus(); return; }
+                if (isNaN(amount) || amount < 0) { setStatus('金額を入力してください。', true); $('f-amount').focus(); return; }
+                var row = {
+                    date: $('f-date').value || today(),
+                    store: store,
+                    amount: amount,
+                    memo: $('f-memo').value.trim()
+                };
+                var btn = this;
+                btn.disabled = true;
+                rows.unshift(row);
+                save(LS_ROWS, rows);
+                render();
+                sendToSheet(row).then(function (sent) {
+                    setStatus(sent ? '保存し、スプレッドシートへ送信しました。' : '保存しました(スプレッドシート連携は未設定です)。');
+                }).catch(function () {
+                    setStatus('一覧には保存しましたが、スプレッドシートへの送信に失敗しました。', true);
+                }).then(function () {
+                    btn.disabled = false;
+                    $('f-store').value = ''; $('f-amount').value = ''; $('f-memo').value = '';
+                    $('preview').style.display = 'none';
+                });
+            });
+
+            /* ---------- CSV / clear ---------- */
+            function csvCell(v) {
+                v = String(v == null ? '' : v);
+                return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+            }
+            $('btn-csv').addEventListener('click', function () {
+                if (!rows.length) { setStatus('保存する記録がありません。', true); return; }
+                var lines = [['日付', '店名', '金額', 'メモ'].join(',')];
+                rows.forEach(function (r) {
+                    lines.push([r.date, r.store, r.amount, r.memo].map(csvCell).join(','));
+                });
+                var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'receipts-' + today() + '.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+            });
+            $('btn-clear').addEventListener('click', function () {
+                if (!rows.length) return;
+                if (!confirm('この端末の一覧をすべて空にしますか?(スプレッドシート側の行は消えません)')) return;
+                rows = [];
+                save(LS_ROWS, rows);
+                render();
+            });
+
+            /* ---------- init ---------- */
+            $('f-date').value = today();
+            fillSettings();
+            render();
+        })();
+    </script>
+</body>
+
+</html>
